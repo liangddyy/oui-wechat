@@ -34,6 +34,7 @@ def main() -> int:
     names = (
         "Dockerfile", "compose.yaml", ".dockerignore", "requirements.lock", "uv.lock",
         "pyproject.toml", "README.md", "DEPLOY.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "MANIFEST.in",
+        ".gitignore", ".env.example",
     )
     sources = [ROOT / name for name in names]
     for directory in ("oui_wechat", "vendor"):

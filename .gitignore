@@ -17,3 +17,7 @@ upstream/
 reports/
 artifacts/
 patches/
+compose.override.yaml
+build.log
+.build-*
+deployment-verification.json

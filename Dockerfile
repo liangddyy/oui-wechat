@@ -18,6 +18,8 @@ RUN pip install --no-cache-dir --no-deps ./vendor/open-webui-weixin . \
     && mkdir /data \
     && chown oui:oui /data
 
+RUN chmod -R a+rX /app
+
 USER oui
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
