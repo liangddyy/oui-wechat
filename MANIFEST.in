@@ -1,0 +1,4 @@
+include LICENSE THIRD_PARTY_NOTICES.md uv.lock requirements.lock
+recursive-include oui_wechat/static *
+recursive-include vendor/open-webui-weixin *.py *.toml *.md *.json *.example
+recursive-exclude vendor __pycache__ *.pyc *.pyo

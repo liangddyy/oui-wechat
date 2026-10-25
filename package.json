@@ -1,0 +1,13 @@
+{
+  "name": "oui-wechat-browser-tests",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "test:browser": "node scripts/test_browser.cjs",
+    "format": "prettier --write oui_wechat/static scripts/test_browser.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1",
+    "prettier": "3.6.2"
+  }
+}

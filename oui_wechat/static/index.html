@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>OUI WeChat</title>
+    <link rel="icon" href="/static/icons/messages-square.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/static/style.css" />
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <div id="auth-screen" class="auth-screen" hidden>
+      <main class="auth-panel">
+        <div class="brand">
+          <span class="brand-mark"><img src="/static/icons/messages-square.svg" alt="" /></span
+          ><span>OUI WeChat</span>
+        </div>
+        <h1 id="auth-title">登录管理</h1>
+        <form id="auth-form">
+          <label class="field"
+            >管理密码
+            <span class="password-input"
+              ><input
+                id="auth-password"
+                type="password"
+                required
+                minlength="8"
+                maxlength="256"
+                autocomplete="current-password" /><button
+                class="icon-button"
+                type="button"
+                data-password="auth-password"
+                title="显示密码"
+                aria-label="显示密码"
+              >
+                <img src="/static/icons/eye.svg" alt="" /></button
+            ></span>
+          </label>
+          <label class="field" id="auth-confirm-field" hidden
+            >确认密码
+            <input
+              id="auth-confirm"
+              type="password"
+              minlength="8"
+              maxlength="256"
+              autocomplete="new-password"
+            />
+          </label>
+          <p class="error" id="auth-error" role="alert" hidden></p>
+          <button class="button primary full" id="auth-submit" type="submit">登录</button>
+        </form>
+        <div class="auth-footer">OPEN WEBUI · WECHAT</div>
+      </main>
+    </div>
+
+    <div id="app" class="app" hidden>
+      <aside class="sidebar">
+        <a class="brand" href="/"
+          ><span class="brand-mark"><img src="/static/icons/messages-square.svg" alt="" /></span
+          ><span>OUI WeChat</span></a
+        >
+        <div class="nav-label">管理</div>
+        <nav aria-label="主导航">
+          <button class="nav-item active" data-view="accounts">
+            <img src="/static/icons/users.svg" alt="" /><span>微信账号</span
+            ><span id="nav-count" class="nav-count">0</span>
+          </button>
+          <button class="nav-item" data-view="settings">
+            <img src="/static/icons/settings-2.svg" alt="" /><span>服务设置</span>
+          </button>
+          <button class="nav-item" data-view="logs">
+            <img src="/static/icons/scroll-text.svg" alt="" /><span>运行日志</span>
+          </button>
+        </nav>
+        <div class="sidebar-footer">
+          <span class="version" id="version">v0.1.0</span>
+          <button class="icon-button" id="logout" title="退出登录" aria-label="退出登录">
+            <img src="/static/icons/log-out.svg" alt="" />
+          </button>
+        </div>
+      </aside>
+      <main class="main">
+        <header class="topbar">
+          <span class="breadcrumb">管理面板 <span>/</span> <strong id="view-name">微信账号</strong></span>
+          <div class="topbar-right">
+            <span class="connection" id="backend-status"><i class="dot"></i>读取连接状态</span
+            ><button class="icon-button" id="refresh-status" title="检查连接" aria-label="检查连接">
+              <img src="/static/icons/refresh-cw.svg" alt="" />
+            </button>
+          </div>
+        </header>
+        <div class="page">
+          <p id="page-error" class="banner error-banner" role="alert" hidden></p>
+          <section id="view-accounts" class="view">
+            <div class="page-heading">
+              <div>
+                <div class="eyebrow">CONNECTIONS</div>
+                <h1>微信账号</h1>
+              </div>
+              <button class="button primary" id="add-account">
+                <img src="/static/icons/plus.svg" alt="" />添加微信
+              </button>
+            </div>
+            <div class="summary-bar">
+              <span><i class="dot green"></i><strong id="online-count">0</strong> 个连接在线</span
+              ><span
+                ><img src="/static/icons/link-2.svg" alt="" /><strong id="bound-count">0</strong>
+                个账号已绑定</span
+              ><span id="service-indicator" class="summary-service">等待添加账号</span>
+            </div>
+            <div class="table-heading">
+              <span>微信连接 / Open WebUI 用户</span><span>会话</span><span>状态</span><span></span>
+            </div>
+            <div id="accounts-list" class="accounts-list"></div>
+            <div id="accounts-empty" class="empty-state" hidden>
+              <span class="empty-icon"><img src="/static/icons/qr-code.svg" alt="" /></span>
+              <h2>暂无微信账号</h2>
+              <button class="button secondary" id="add-first-account">
+                <img src="/static/icons/plus.svg" alt="" />添加微信
+              </button>
+            </div>
+            <div class="list-footer">
+              <span id="account-total">共 0 个账号</span
+              ><button class="button secondary small" id="service-toggle">
+                <img src="/static/icons/pause.svg" alt="" /><span>暂停服务</span>
+              </button>
+            </div>
+          </section>
+
+          <section id="view-settings" class="view" hidden>
+            <div class="page-heading">
+              <div>
+                <div class="eyebrow">CONFIGURATION</div>
+                <h1>服务设置</h1>
+              </div>
+            </div>
+            <form id="settings-form">
+              <section class="settings-section">
+                <div class="section-title">
+                  <img src="/static/icons/link-2.svg" alt="" />
+                  <h2>Open WebUI</h2>
+                </div>
+                <label class="field endpoint-field"
+                  >服务地址<input
+                    id="setting-url"
+                    type="url"
+                    required
+                    placeholder="https://openwebui.example.com"
+                    autocomplete="url"
+                /></label>
+              </section>
+              <section class="settings-section">
+                <div class="section-title">
+                  <img src="/static/icons/messages-square.svg" alt="" />
+                  <h2>消息显示</h2>
+                </div>
+                <div id="display-switches" class="switch-grid"></div>
+              </section>
+              <section class="settings-section">
+                <div class="section-title">
+                  <img src="/static/icons/settings-2.svg" alt="" />
+                  <h2>模型功能</h2>
+                </div>
+                <div id="capability-switches" class="switch-grid"></div>
+              </section>
+              <section class="settings-section">
+                <div class="section-title">
+                  <img src="/static/icons/ellipsis.svg" alt="" />
+                  <h2>消息分片</h2>
+                </div>
+                <div class="form-grid">
+                  <label class="field"
+                    >单条消息长度<span class="input-unit"
+                      ><input id="setting-length" type="number" min="128" max="8192" step="1" required /><span
+                        >字符</span
+                      ></span
+                    ></label
+                  ><label class="field"
+                    >分片发送间隔<span class="input-unit"
+                      ><input id="setting-interval" type="number" min="0" max="5" step="0.1" required /><span
+                        >秒</span
+                      ></span
+                    ></label
+                  >
+                </div>
+              </section>
+              <div class="form-footer">
+                <p id="settings-error" class="error" role="alert" hidden></p>
+                <button class="button primary" type="submit">
+                  <img src="/static/icons/save.svg" alt="" />保存设置
+                </button>
+              </div>
+            </form>
+            <form id="password-form" class="settings-section password-section">
+              <div class="section-title">
+                <img src="/static/icons/shield-check.svg" alt="" />
+                <h2>管理密码</h2>
+              </div>
+              <div class="password-fields">
+                <label class="field"
+                  >当前密码<input
+                    id="current-password"
+                    type="password"
+                    autocomplete="current-password"
+                    required
+                    maxlength="256" /></label
+                ><label class="field"
+                  >新密码<input
+                    id="new-password"
+                    type="password"
+                    autocomplete="new-password"
+                    minlength="8"
+                    maxlength="256"
+                    required /></label
+                ><label class="field"
+                  >确认新密码<input
+                    id="new-password-confirm"
+                    type="password"
+                    autocomplete="new-password"
+                    minlength="8"
+                    maxlength="256"
+                    required
+                /></label>
+              </div>
+              <div class="form-footer">
+                <p class="error" id="password-error" role="alert" hidden></p>
+                <button class="button secondary" type="submit">
+                  <img src="/static/icons/key-round.svg" alt="" />更新密码
+                </button>
+              </div>
+            </form>
+          </section>
+
+          <section id="view-logs" class="view" hidden>
+            <div class="page-heading">
+              <div>
+                <div class="eyebrow">ACTIVITY</div>
+                <h1>运行日志</h1>
+              </div>
+              <div class="log-actions">
+                <label class="auto-refresh"><input id="auto-logs" type="checkbox" checked />自动更新</label
+                ><button
+                  class="icon-button bordered"
+                  id="download-logs"
+                  title="下载日志"
+                  aria-label="下载日志"
+                >
+                  <img src="/static/icons/download.svg" alt="" />
+                </button>
+              </div>
+            </div>
+            <div class="log-toolbar">
+              <label class="log-filter"
+                >日志级别<select id="log-level">
+                  <option value="all">全部级别</option>
+                  <option value="WARNING">警告及以上</option>
+                  <option value="ERROR">仅错误</option>
+                </select></label
+              ><span id="log-count">0 条</span
+              ><button class="icon-button" id="refresh-logs" title="刷新日志" aria-label="刷新日志">
+                <img src="/static/icons/refresh-cw.svg" alt="" />
+              </button>
+            </div>
+            <div id="log-entries" class="log-entries" aria-live="off"></div>
+            <div id="logs-empty" class="empty-state compact" hidden>
+              <img src="/static/icons/scroll-text.svg" alt="" />
+              <h2>暂无日志</h2>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <dialog id="pair-dialog" class="modal pairing-modal">
+      <div class="modal-header">
+        <h2>添加微信</h2>
+        <button class="icon-button" data-close="pair-dialog" title="关闭" aria-label="关闭">
+          <img src="/static/icons/x.svg" alt="" />
+        </button>
+      </div>
+      <div class="steps">
+        <span class="step active"><b>1</b>微信授权</span><span class="step-line"></span
+        ><span class="step"><b>2</b>账号绑定</span>
+      </div>
+      <div class="qr-frame" id="qr-frame">
+        <span class="spinner" id="qr-spinner"></span
+        ><img id="qr-image" alt="微信 ClawBot 授权二维码" hidden />
+      </div>
+      <h3 id="pair-status" class="pair-status">正在获取二维码</h3>
+      <p class="pair-channel">微信 ClawBot</p>
+      <form id="pair-code-form" hidden>
+        <label class="field"
+          >数字配对码<input
+            id="pair-code"
+            inputmode="numeric"
+            pattern="[0-9]{4,12}"
+            autocomplete="one-time-code"
+            maxlength="12"
+            required /></label
+        ><button class="button primary full" type="submit">确认配对码</button>
+      </form>
+      <p id="pair-error" class="error" role="alert" hidden></p>
+      <div class="modal-footer">
+        <button class="button secondary" id="refresh-qr">
+          <img src="/static/icons/refresh-cw.svg" alt="" />刷新二维码</button
+        ><button class="button secondary" data-close="pair-dialog">取消</button>
+      </div>
+    </dialog>
+
+    <dialog id="bind-dialog" class="modal">
+      <div class="modal-header">
+        <h2>绑定 Open WebUI</h2>
+        <button class="icon-button" data-close="bind-dialog" title="关闭" aria-label="关闭">
+          <img src="/static/icons/x.svg" alt="" />
+        </button>
+      </div>
+      <div class="account-context" id="bind-context"></div>
+      <form id="bind-form">
+        <label class="field"
+          >Open WebUI 邮箱<input
+            id="bind-email"
+            type="email"
+            required
+            autocomplete="username"
+            maxlength="320"
+        /></label>
+        <label class="field"
+          >Open WebUI 密码<span class="password-input"
+            ><input
+              id="bind-password"
+              type="password"
+              required
+              autocomplete="current-password"
+              maxlength="1024" /><button
+              class="icon-button"
+              type="button"
+              data-password="bind-password"
+              title="显示密码"
+              aria-label="显示密码"
+            >
+              <img src="/static/icons/eye.svg" alt="" /></button></span
+        ></label>
+        <p id="bind-error" class="error" role="alert" hidden></p>
+        <div class="modal-footer">
+          <button class="button secondary" type="button" data-close="bind-dialog">取消</button
+          ><button class="button primary" type="submit">
+            <img src="/static/icons/link-2.svg" alt="" />绑定账号
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="model-dialog" class="modal">
+      <div class="modal-header">
+        <h2>模型与会话</h2>
+        <button class="icon-button" data-close="model-dialog" title="关闭" aria-label="关闭">
+          <img src="/static/icons/x.svg" alt="" />
+        </button>
+      </div>
+      <div id="model-context" class="account-context"></div>
+      <form id="model-form">
+        <label class="field">当前模型<select id="model-select" required></select></label>
+        <p id="model-error" class="error" role="alert" hidden></p>
+        <div class="modal-footer">
+          <button class="button secondary" id="new-chat" type="button">
+            <img src="/static/icons/plus.svg" alt="" />新建会话</button
+          ><button class="button primary" type="submit">
+            <img src="/static/icons/check.svg" alt="" />应用模型
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="rename-dialog" class="modal">
+      <div class="modal-header">
+        <h2>账号名称</h2>
+        <button class="icon-button" data-close="rename-dialog" title="关闭" aria-label="关闭">
+          <img src="/static/icons/x.svg" alt="" />
+        </button>
+      </div>
+      <form id="rename-form">
+        <label class="field">名称<input id="rename-input" required maxlength="40" /></label>
+        <p class="error" id="rename-error" hidden role="alert"></p>
+        <div class="modal-footer">
+          <button class="button secondary" type="button" data-close="rename-dialog">取消</button
+          ><button class="button primary" type="submit">保存名称</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="confirm-dialog" class="modal">
+      <div class="modal-header">
+        <h2 id="confirm-title">确认操作</h2>
+        <button class="icon-button" data-close="confirm-dialog" title="关闭" aria-label="关闭">
+          <img src="/static/icons/x.svg" alt="" />
+        </button>
+      </div>
+      <p class="confirm-message" id="confirm-message"></p>
+      <p class="error" id="confirm-error" role="alert" hidden></p>
+      <div class="modal-footer">
+        <button class="button secondary" data-close="confirm-dialog">取消</button
+        ><button class="button danger" id="confirm-submit">确认</button>
+      </div>
+    </dialog>
+    <div id="toast" class="toast" role="status" hidden>
+      <img src="/static/icons/circle-check.svg" alt="" /><span></span>
+    </div>
+  </body>
+</html>

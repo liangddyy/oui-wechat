@@ -1,0 +1,16 @@
+{
+  "name": "Open-WebUI-Weixin",
+  "repository": "https://github.com/Moha-Master/Open-WebUI-Weixin",
+  "commit": "e30b2990163c317f09f96ae657e3fd88d1be61d0",
+  "version": "0.1.0",
+  "license_declared_in_pyproject": "MIT",
+  "standalone_license_file_present_at_source_revision": false,
+  "local_changes": [
+    "Use the Socket.IO namespace session ID",
+    "Refresh the active conversation branch before follow-up requests",
+    "Reject follow-ups while the current reply is incomplete",
+    "Default reasoning notices on, reasoning content off",
+    "Add asynchronous browser pairing callbacks",
+    "Update regression fixtures and obsolete presentation assertions"
+  ]
+}
