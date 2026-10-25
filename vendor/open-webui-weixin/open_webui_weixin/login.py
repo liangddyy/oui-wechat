@@ -40,6 +40,7 @@ class LoginFlow:
         on_qr: Callable[[str], Awaitable[None]] | None = None,
         on_status: Callable[[str], Awaitable[None]] | None = None,
         get_code: Callable[[], Awaitable[str]] | None = None,
+        on_confirm: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> None:
         self.client = client
         self.state = state
@@ -47,6 +48,7 @@ class LoginFlow:
         self.on_qr = on_qr
         self.on_status = on_status
         self.get_code = get_code
+        self.on_confirm = on_confirm
 
     async def run(self) -> dict[str, Any]:
         """阻塞直到登录成功。二维码过期会持续重新申请（操作者可能稍后才来扫码）。"""
@@ -100,7 +102,10 @@ class LoginFlow:
                     "base_url": (data.get("baseurl") or self.client.base_url).strip(),
                     "scanner_user_id": (data.get("ilink_user_id") or "").strip(),
                 }
-                self.state.save_login(result)
+                if self.on_confirm:
+                    await self.on_confirm(result)
+                else:
+                    self.state.save_login(result)
                 log.info("登录成功：bot_id=%s base_url=%s", result["bot_id"], result["base_url"])
                 return result
 

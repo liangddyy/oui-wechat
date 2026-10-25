@@ -829,6 +829,29 @@ h3 {
   color: #a5aea7;
   font-size: 10px;
 }
+.auth-modes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--line);
+}
+.auth-modes button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 12px 4px;
+  background: transparent;
+  color: var(--muted);
+}
+.auth-modes button[aria-pressed="true"] {
+  border-bottom-color: var(--green);
+  color: var(--green);
+}
+.signed-in-user {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  margin-bottom: 22px;
+}
 .modal {
   border: 1px solid #e0e7e1;
   border-radius: 8px;

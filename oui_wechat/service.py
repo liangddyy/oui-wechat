@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import time
 import uuid
@@ -13,9 +14,11 @@ import httpx
 from open_webui_weixin.adapter import Adapter
 from open_webui_weixin.login import LoginFlow
 from open_webui_weixin.main import build_client
-from open_webui_weixin.owui import OwuiClient
+from open_webui_weixin.owui import OwuiClient, SessionInfo
 from open_webui_weixin.state import StateStore
 
+from .adapter import WebAdapter
+from .auth import Principal
 from .config import ConfigStore
 from .media import qr_png
 
@@ -33,6 +36,7 @@ class Pairing:
     task: asyncio.Task | None = None
     code: asyncio.Queue = field(default_factory=lambda: asyncio.Queue(maxsize=1))
     created: float = field(default_factory=time.time)
+    principal: Principal | None = field(default=None, repr=False)
 
     def public(self) -> dict:
         return {
@@ -51,9 +55,15 @@ class ServiceManager:
         self.task: asyncio.Task | None = None
         self.login_client = None
         self.lock = asyncio.Lock()
+        self.access_lock = asyncio.Lock()
         self.jobs: dict[str, Pairing] = {}
         self.last_error: str | None = None
         self.health_cache: tuple[float, dict] = (0, {})
+        # Existing installations inherit ownership from their saved bindings once.
+        for binding in self.state.list_bindings():
+            uid = binding["wechat_user_id"]
+            if not self.state.get_meta(f"web_owner:{uid}") and binding["owui_user_id"]:
+                self._set_owner(uid, binding["owui_user_id"])
 
     @property
     def enabled(self) -> bool:
@@ -68,7 +78,9 @@ class ServiceManager:
             return
         self.last_error = None
         self.login_client = build_client(self.config.cfg)
-        self.adapter = Adapter(self.config.cfg, self.state, self.login_client, self.owui)
+        self.adapter = WebAdapter(
+            self.config.cfg, self.state, self.login_client, self.owui, access_lock=self.access_lock
+        )
         self.task = asyncio.create_task(self.adapter.run())
         self.task.add_done_callback(self._finished)
 
@@ -133,10 +145,33 @@ class ServiceManager:
                 return row
         raise ValueError("微信连接不存在，请刷新列表")
 
-    def accounts(self) -> list[dict]:
+    def _set_owner(self, uid: str, user_id: str) -> None:
+        self.state.set_meta(f"web_owner:{uid}", json.dumps({
+            "user_id": user_id, "base_url": self.config.cfg.owui.base_url,
+        }))
+
+    def owns(self, uid: str, principal: Principal) -> bool:
+        value = self.state.get_meta(f"web_owner:{uid}")
+        owner = json.loads(value) if value else {}
+        return bool(
+            principal.owui and principal.active
+            and principal.base_url == self.config.cfg.owui.base_url == owner.get("base_url")
+            and principal.owui.user_id == owner.get("user_id")
+        )
+
+    def allowed_account(self, account_id: str, principal: Principal) -> bool:
+        return any(
+            row["account_id"] == account_id
+            and (principal.role == "admin" or self.owns(row["scanner_user_id"], principal))
+            for row in self.state.load_accounts()
+        )
+
+    def accounts(self, principal: Principal | None = None) -> list[dict]:
         result = []
         for index, row in enumerate(self.state.load_accounts(), 1):
             uid = row["scanner_user_id"]
+            if principal and principal.role != "admin" and not self.owns(uid, principal):
+                continue
             binding = self.state.get_binding(uid) if uid else None
             focus = self.state.get_focus(uid) if uid else None
             handle = self.adapter._accounts.get(row["account_id"]) if self.adapter else None
@@ -200,17 +235,40 @@ class ServiceManager:
         if len(email) > 320 or len(password) > 1024:
             raise ValueError("账号或密码长度无效")
         session = await self.owui.signin(email.strip(), password)
+        self.validate_session(session)
+        await self.bind_session(account_id, session)
+
+    @staticmethod
+    def validate_session(session: SessionInfo) -> None:
+        if (
+            not session.user_id or not session.jwt_token or session.role not in {"admin", "user"}
+            or session.expires_at is not None and session.expires_at <= time.time()
+        ):
+            raise ValueError("Open WebUI 登录不可用，请确认账号已获准使用")
+
+    async def bind_session(self, account_id: str, session: SessionInfo) -> None:
+        uid = self.account(account_id)["scanner_user_id"]
+        if not uid:
+            raise ValueError("扫码者身份缺失，请重新授权微信")
+        self.validate_session(session)
         resolved = await self.owui.resolve_default_model(session.jwt_token)
         await self._drop_runtime(uid)
-        self._reset_focus(uid)
+        self._store_binding(uid, session, resolved)
+        log.info("已通过管理页绑定一个 Open WebUI 用户，未保存密码")
+
+    def _store_binding(self, uid: str, session: SessionInfo, resolved: tuple[str, str] | None) -> None:
+        previous = self.state.get_binding(uid)
+        if not previous or previous["owui_user_id"] != session.user_id:
+            self._reset_focus(uid)
         self.state.upsert_binding(uid, {
             "email": session.email, "password": "",
             "owui_user_id": session.user_id, "owui_name": session.name,
             "jwt_token": session.jwt_token, "jwt_expires_at": session.expires_at,
         })
-        if resolved:
+        self._set_owner(uid, session.user_id)
+        focus = self.state.get_focus(uid)
+        if resolved and (not focus or not focus["model_id"]):
             self.state.set_focus(uid, model_id=resolved[0])
-        log.info("已通过管理页绑定一个 Open WebUI 用户，未保存密码")
 
     async def unbind(self, account_id: str) -> None:
         uid = self.account(account_id)["scanner_user_id"]
@@ -271,14 +329,22 @@ class ServiceManager:
         session = await self.owui.whoami(binding["jwt_token"])
         return {"valid": session.user_id == binding["owui_user_id"]}
 
-    async def add_pairing(self) -> Pairing:
+    async def add_pairing(self, principal: Principal | None = None) -> Pairing:
         if sum(bool(job.task and not job.task.done()) for job in self.jobs.values()) >= 5:
             raise ValueError("请先完成或取消已有的扫码")
+        if principal and principal.role == "user" and any(
+            job.principal and job.principal.owui
+            and job.principal.owui.user_id == principal.owui.user_id
+            and job.task and not job.task.done() for job in self.jobs.values()
+        ):
+            raise ValueError("请先完成或取消自己的扫码")
         self.jobs = {
             key: job for key, job in self.jobs.items()
             if job.task and not job.task.done() or job.created > time.time() - 600
         }
-        job = Pairing()
+        if len(self.jobs) >= 200:
+            raise ValueError("扫码请求过多，请稍后重试")
+        job = Pairing(principal=principal)
         self.jobs[job.id] = job
         job.task = asyncio.create_task(self._pair(job))
         return job
@@ -298,10 +364,53 @@ class ServiceManager:
             job.status = "need_verifycode"
             return await asyncio.wait_for(job.code.get(), timeout=180)
 
+        async def on_confirm(result: dict) -> None:
+            # LoginFlow calls this before writing anything, so rejected scans cannot replace tokens.
+            principal = job.principal
+            if principal and not principal.active:
+                raise ValueError("登录已过期，请重新登录")
+            session = None
+            base_url = self.config.cfg.owui.base_url
+            if principal and principal.role == "user":
+                if not self.user_session_active(principal):
+                    raise ValueError("登录已过期，请重新登录后扫码")
+                session = await self.owui.whoami(principal.owui.jwt_token)
+                self.validate_session(session)
+                if session.user_id != principal.owui.user_id:
+                    raise ValueError("账号身份已变化，请重新登录")
+            async with self.access_lock:
+                if principal and not principal.active:
+                    raise ValueError("登录已过期，请重新登录")
+                uid = result["scanner_user_id"]
+                if not uid or not result["bot_id"]:
+                    raise ValueError("微信授权身份缺失")
+                if session:
+                    if not self.user_session_active(principal) or base_url != self.config.cfg.owui.base_url:
+                        raise ValueError("登录配置已变化，请重新登录")
+                    owner = self.state.get_meta(f"web_owner:{uid}")
+                    if owner and not self.owns(uid, principal):
+                        raise ValueError("此微信已属于其他用户，请联系管理员处理")
+                    existing = next((
+                        row for row in self.state.load_accounts()
+                        if row["account_id"] == result["bot_id"]
+                    ), None)
+                    if existing and existing["scanner_user_id"] != uid:
+                        raise ValueError("此微信连接已被使用，请联系管理员处理")
+                    # Resolve before saving the new authorization; no partly bound user account.
+                    resolved = await self.owui.resolve_default_model(session.jwt_token)
+                    if not self.user_session_active(principal):
+                        raise ValueError("登录已过期，请重新登录")
+                    await self._drop_runtime(uid)
+                    if not self.user_session_active(principal):
+                        raise ValueError("登录已过期，请重新登录")
+                    self._store_binding(uid, session, resolved)
+                self.state.save_login(result)
+
         try:
             flow = LoginFlow(
                 client, self.state, self.config.cfg.weixin.bot_type,
                 on_qr=on_qr, on_status=on_status, get_code=get_code,
+                on_confirm=on_confirm,
             )
             result = await asyncio.wait_for(flow.run(), timeout=300)
             job.account_id = result["bot_id"]
@@ -312,12 +421,33 @@ class ServiceManager:
             job.status = "cancelled"
             job.image = b""
             raise
+        except ValueError as exc:
+            job.status = "error"
+            job.error = str(exc)
         except Exception as exc:
             job.status = "error"
             job.error = "微信授权失败，请刷新二维码重试"
             log.warning("微信扫码未完成：%s", type(exc).__name__)
         finally:
+            job.image = b""
+            job.principal = self._pairing_identity(job.principal)
             await client.close()
+
+    @staticmethod
+    def _pairing_identity(principal: Principal | None) -> Principal | None:
+        """Retain task ownership without retaining a logged-out user's bearer token."""
+        if not principal or not principal.owui:
+            return principal
+        session = principal.owui
+        return Principal("user", float("inf"), SessionInfo(
+            "", None, session.user_id, "", "", "user"
+        ), principal.base_url)
+
+    def user_session_active(self, principal: Principal) -> bool:
+        return (
+            principal.active and self.config.user_login
+            and principal.base_url == self.config.cfg.owui.base_url
+        )
 
     async def cancel_pairing(self, job_id: str) -> None:
         job = self.jobs.get(job_id)

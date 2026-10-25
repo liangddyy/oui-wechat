@@ -13,6 +13,11 @@ let polling = false;
 let logs = [];
 let confirmAction = null;
 let toastTimer = null;
+let role = "admin";
+let signedInUser = null;
+let userLogin = false;
+let loginMode = "admin";
+let authRetryUntil = 0;
 
 function icon(name) {
   const img = document.createElement("img");
@@ -55,7 +60,11 @@ async function api(path, options = {}) {
     document.querySelectorAll("dialog[open]").forEach((dialog) => dialog.close());
     showAuth();
   }
-  if (!response.ok) throw new Error(data.error || `请求失败 (${response.status})`);
+  if (!response.ok) {
+    const error = new Error(data.error || `请求失败 (${response.status})`);
+    error.retryAfter = data.retry_after;
+    throw error;
+  }
   return data;
 }
 
@@ -71,18 +80,40 @@ async function withBusy(button, fn, errorId = "page-error") {
     return await fn();
   } catch (error) {
     errorAt(errorId, error);
+    if (errorId === "auth-error" && error.retryAfter) {
+      authRetryUntil = Date.now() + error.retryAfter * 1000;
+    }
   } finally {
     button.disabled = false;
     button.classList.remove("is-busy");
     button.removeAttribute("aria-busy");
+    if (button.id === "auth-submit") updateAuthButton();
   }
 }
 
+function updateAuthButton() {
+  const remaining = Math.max(0, Math.ceil((authRetryUntil - Date.now()) / 1000));
+  $("auth-submit").disabled = remaining > 0;
+  $("auth-submit").textContent = remaining ? `${remaining} 秒后重试` : initialized ? "登录" : "创建管理密码";
+}
+
 function showAuth() {
+  document.querySelectorAll("dialog[open]").forEach((dialog) => dialog.close());
+  $("toast").hidden = true;
+  for (const id of ["bind-password", "current-password", "new-password", "new-password-confirm"]) $(id).value = "";
   $("app").hidden = true;
   $("auth-screen").hidden = false;
-  $("auth-title").textContent = initialized ? "登录管理" : "设置管理密码";
-  $("auth-submit").textContent = initialized ? "登录" : "创建管理密码";
+  const isUser = initialized && userLogin && loginMode === "user";
+  $("auth-title").textContent = initialized ? isUser ? "登录 Open WebUI" : "登录管理" : "设置管理密码";
+  $("auth-modes").hidden = !initialized || !userLogin;
+  $("mode-user").setAttribute("aria-pressed", String(isUser));
+  $("mode-admin").setAttribute("aria-pressed", String(!isUser));
+  $("auth-email-field").hidden = !isUser;
+  $("auth-email").required = isUser;
+  $("auth-password-label").textContent = isUser ? "Open WebUI 密码" : "管理密码";
+  $("auth-password").minLength = isUser ? 1 : 8;
+  $("auth-password").maxLength = isUser ? 1024 : 256;
+  updateAuthButton();
   $("auth-confirm-field").hidden = initialized;
   $("auth-confirm").required = !initialized;
   $("auth-password").autocomplete = initialized ? "current-password" : "new-password";
@@ -91,7 +122,33 @@ function showAuth() {
   $("auth-confirm").value = "";
 }
 
-async function showApp() {
+for (const mode of ["user", "admin"]) {
+  $(`mode-${mode}`).addEventListener("click", () => {
+    loginMode = mode;
+    errorAt("auth-error", null);
+    showAuth();
+  });
+}
+setInterval(() => {
+  if (!$("auth-screen").hidden && !$("auth-submit").classList.contains("is-busy")) updateAuthButton();
+}, 1000);
+
+async function showApp(state) {
+  role = state.role;
+  signedInUser = state.user;
+  document.querySelectorAll("[data-admin]").forEach((item) => { item.hidden = role !== "admin"; });
+  $("panel-name").textContent = role === "admin" ? "管理面板" : "我的微信";
+  $("nav-label").textContent = role === "admin" ? "管理" : "我的账号";
+  $("signed-in-user").hidden = role === "admin";
+  $("signed-in-user").textContent = signedInUser ? `${signedInUser.name} · ${signedInUser.email}` : "";
+  currentView = "accounts";
+  accounts = [];
+  logs = [];
+  $("log-entries").replaceChildren();
+  $("accounts-list").replaceChildren();
+  document.querySelectorAll(".view").forEach((view) => { view.hidden = view.id !== "view-accounts"; });
+  document.querySelectorAll("[data-view]").forEach((nav) => nav.classList.toggle("active", nav.dataset.view === "accounts"));
+  $("view-name").textContent = "微信账号";
   authenticated = true;
   initialized = true;
   $("auth-screen").hidden = true;
@@ -107,10 +164,14 @@ $("auth-form").addEventListener("submit", (event) => {
     async () => {
       const password = $("auth-password").value;
       if (!initialized && password !== $("auth-confirm").value) throw new Error("两次输入的密码不一致");
-      await post(initialized ? "/auth/login" : "/auth/setup", { password });
+      const isUser = initialized && userLogin && loginMode === "user";
+      const state = await post(
+        initialized ? isUser ? "/auth/owui" : "/auth/login" : "/auth/setup",
+        isUser ? { email: $("auth-email").value, password } : { password },
+      );
       $("auth-password").value = "";
       $("auth-confirm").value = "";
-      await showApp();
+      await showApp(state);
     },
     "auth-error",
   );
@@ -267,6 +328,7 @@ async function loadSettings() {
   $("setting-interval").value = data.reply.segment_interval;
   renderSwitches("display-switches", displaySettings, data);
   renderSwitches("capability-switches", capabilitySettings, data);
+  renderSwitches("access-switches", [["access.user_login", "允许 Open WebUI 账号登录"]], data);
 }
 
 $("settings-form").addEventListener("submit", (event) => {
@@ -287,7 +349,8 @@ $("settings-form").addEventListener("submit", (event) => {
         for (const key of keys.slice(0, -1)) target = target[key] ||= {};
         target[keys.at(-1)] = input.checked;
       }
-      await api("/settings", { method: "PUT", body: JSON.stringify(data) });
+      const saved = await api("/settings", { method: "PUT", body: JSON.stringify(data) });
+      userLogin = saved.access.user_login;
       toast("设置已保存");
       await refresh(true);
     },
@@ -518,6 +581,13 @@ $("rename-form").addEventListener("submit", (event) => {
 });
 
 function runAccountAction(action, account, button) {
+  if (action === "bind" && role !== "admin") {
+    return withBusy(button, async () => {
+      await post(`/accounts/${encodeURIComponent(account.id)}/bind`);
+      toast("已绑定当前 Open WebUI 账号");
+      await refresh(true);
+    });
+  }
   if (action === "bind") return openBind(account);
   if (action === "model") return openModels(account);
   if (action === "rename") {
@@ -613,6 +683,9 @@ $("logout").addEventListener("click", (event) =>
     await post("/auth/logout");
     authenticated = false;
     accounts = [];
+    const state = await api("/auth/state");
+    userLogin = state.user_login;
+    loginMode = userLogin ? "user" : "admin";
     showAuth();
   }),
 );
@@ -644,7 +717,9 @@ document.addEventListener("click", (event) => {
   try {
     const state = await api("/auth/state");
     initialized = state.initialized;
-    if (state.authenticated) await showApp();
+    userLogin = state.user_login;
+    loginMode = userLogin ? "user" : "admin";
+    if (state.authenticated) await showApp(state);
     else showAuth();
   } catch (error) {
     showAuth();

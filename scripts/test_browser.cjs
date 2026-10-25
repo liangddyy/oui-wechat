@@ -48,6 +48,7 @@ const output = path.resolve("reports/browser");
     await reasoning.waitFor();
     assert.equal(await reasoning.isChecked(), true);
     assert.equal(await page.locator('[data-path="display.reasoning.detailed"]').isChecked(), false);
+    await page.locator('[data-path="access.user_login"]').check();
     await reasoning.uncheck();
     await page.locator("#settings-form").getByRole("button", { name: "保存设置" }).click();
     await page.waitForFunction(() => !document.getElementById("toast").hidden);
@@ -72,6 +73,7 @@ const output = path.resolve("reports/browser");
     ]);
     await page.locator("#logout").click();
     await page.waitForSelector("#auth-screen:not([hidden])");
+    await page.locator("#mode-admin").click();
     await page.locator("#auth-password").fill(password);
     await page.locator("#auth-submit").click();
     await page.waitForSelector("#auth-error:not([hidden])");
@@ -201,8 +203,6 @@ const output = path.resolve("reports/browser");
     await page.waitForFunction(() => document.querySelectorAll(".account-row").length === 3);
     await page.locator("#toast").waitFor({ state: "hidden" });
     await page.screenshot({ path: path.join(output, "accounts-desktop.png"), fullPage: true });
-    await fs.mkdir("docs/images", { recursive: true });
-    await page.screenshot({ path: "docs/images/management.png", fullPage: true });
 
     await page.locator(".account-row").nth(2).getByRole("button", { name: "绑定账号", exact: true }).click();
     await page.locator("#bind-email").fill("family@example.com");
@@ -272,6 +272,82 @@ const output = path.resolve("reports/browser");
     assert.deepEqual(errors, []);
     assert.deepEqual(failedAssets, []);
     passed("local assets and no browser JavaScript errors");
+
+    const userContext = await browser.newContext({ viewport: { width: 1440, height: 960 } });
+    const userPage = await userContext.newPage();
+    userPage.on("pageerror", (error) => errors.push(error.message));
+    await userPage.goto(base);
+    await userPage.waitForSelector("#auth-email-field:not([hidden])");
+    await userPage.screenshot({ path: path.join(output, "user-login-desktop.png"), fullPage: true });
+    await userPage.locator("#auth-email").fill("alice@example.com");
+    await userPage.locator("#auth-password").fill("fixture-password");
+    await userPage.locator("#auth-submit").click();
+    await userPage.waitForSelector("#accounts-empty:not([hidden])");
+    assert.equal(await userPage.locator('[data-view="settings"]').isVisible(), false);
+    assert.equal(await userPage.locator('[data-view="logs"]').isVisible(), false);
+    assert.equal(await userPage.locator("#service-toggle").isVisible(), false);
+    assert.match(await userPage.locator("#signed-in-user").textContent(), /alice@example.com/);
+    assert.equal((await userPage.request.get(`${base}/api/logs`)).status(), 403);
+    passed("Open WebUI login and user-only empty state with admin APIs forbidden");
+
+    await userPage.locator("#add-account").click();
+    await userPage.waitForSelector("#pair-code-form:not([hidden])");
+    await userPage.screenshot({ path: path.join(output, "user-pairing-desktop.png"), fullPage: true });
+    await userPage.locator("#pair-code").fill("123456");
+    await userPage.locator("#pair-code-form").getByRole("button", { name: "确认配对码" }).click();
+    await userPage.waitForSelector(".account-row");
+    assert.equal(await userPage.locator("#bind-dialog").isVisible(), false);
+    assert.match(await userPage.locator(".account-row").textContent(), /alice@example.com/);
+    let userData = await (await userPage.request.get(`${base}/api/accounts`)).json();
+    const ownedId = userData.accounts[0].id;
+    assert.equal(userData.accounts[0].bound, true);
+    await userPage.screenshot({ path: path.join(output, "user-accounts-desktop.png"), fullPage: true });
+    passed("real pairing API automatically binds the current user without a credential dialog");
+
+    await userPage.locator(".account-row summary").click();
+    await userPage.getByRole("button", { name: "解除绑定", exact: true }).click();
+    await userPage.locator("#confirm-submit").click();
+    await userPage.waitForFunction(() => document.querySelector(".account-row").textContent.includes("未绑定"));
+    await userPage.getByRole("button", { name: "绑定账号", exact: true }).first().click();
+    await userPage.waitForFunction(() => document.querySelector(".account-row").textContent.includes("alice@example.com"));
+    assert.equal(await userPage.locator("#bind-dialog").isVisible(), false);
+    passed("self-service unbind and rebind always use the current identity");
+
+    const bobContext = await browser.newContext();
+    const bobPage = await bobContext.newPage();
+    await bobPage.goto(base);
+    await bobPage.waitForSelector("#auth-email-field:not([hidden])");
+    await bobPage.locator("#auth-email").fill("bob@example.com");
+    await bobPage.locator("#auth-password").fill("fixture-password");
+    await bobPage.locator("#auth-submit").click();
+    await bobPage.waitForSelector("#accounts-empty:not([hidden])");
+    assert.equal((await bobPage.request.get(`${base}/api/accounts/${ownedId}/models`)).status(), 404);
+    userData = await (await page.request.get(`${base}/api/accounts`)).json();
+    assert.equal(userData.accounts.length, 1);
+    assert.equal(userData.accounts[0].email, "alice@example.com");
+    passed("second user cannot see the first user's connection while admin can see it");
+
+    for (const width of [390, 320]) {
+      await userPage.setViewportSize({ width, height: 844 });
+      assert.equal(await userPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      await userPage.screenshot({ path: path.join(output, `user-accounts-mobile-${width}.png`), fullPage: true });
+    }
+    await userPage.locator("#logout").click();
+    await userPage.waitForSelector("#auth-screen:not([hidden])");
+    await userPage.route("**/api/auth/owui", (route) => route.fulfill({
+      status: 429, json: { error: "尝试过于频繁，请 2 秒后重试", retry_after: 2 },
+    }));
+    await userPage.locator("#auth-email").fill("alice@example.com");
+    await userPage.locator("#auth-password").fill("fixture-password");
+    await userPage.locator("#auth-submit").click();
+    await userPage.waitForSelector("#auth-error:not([hidden])");
+    assert.equal(await userPage.locator("#auth-submit").isDisabled(), true);
+    await userPage.screenshot({ path: path.join(output, "user-rate-limit-mobile-320.png"), fullPage: true });
+    await userPage.waitForFunction(() => !document.getElementById("auth-submit").disabled);
+    assert.deepEqual(errors, []);
+    passed("mobile user layouts and login retry countdown");
+    await bobContext.close();
+    await userContext.close();
     await fs.writeFile(
       path.join(output, "summary.json"),
       JSON.stringify(
@@ -279,7 +355,7 @@ const output = path.resolve("reports/browser");
           checks,
           errors,
           failedAssets,
-          scope: "Real local admin UI; external account and pairing responses are explicit fixtures",
+          scope: "Real local web/auth/ownership APIs with fixture Open WebUI and WeChat; selected admin row flows use browser response fixtures",
         },
         null,
         2,

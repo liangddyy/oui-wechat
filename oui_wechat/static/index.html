@@ -17,9 +17,16 @@
           ><span>OUI WeChat</span>
         </div>
         <h1 id="auth-title">登录管理</h1>
+        <div id="auth-modes" class="auth-modes" role="group" aria-label="登录方式" hidden>
+          <button type="button" id="mode-user" aria-pressed="true">Open WebUI 账号</button>
+          <button type="button" id="mode-admin" aria-pressed="false">管理员</button>
+        </div>
         <form id="auth-form">
+          <label class="field" id="auth-email-field" hidden
+            >Open WebUI 邮箱<input id="auth-email" type="email" maxlength="320" autocomplete="username"
+          /></label>
           <label class="field"
-            >管理密码
+            ><span id="auth-password-label">管理密码</span>
             <span class="password-input"
               ><input
                 id="auth-password"
@@ -60,16 +67,16 @@
           ><span class="brand-mark"><img src="/static/icons/messages-square.svg" alt="" /></span
           ><span>OUI WeChat</span></a
         >
-        <div class="nav-label">管理</div>
+        <div class="nav-label" id="nav-label">管理</div>
         <nav aria-label="主导航">
           <button class="nav-item active" data-view="accounts">
             <img src="/static/icons/users.svg" alt="" /><span>微信账号</span
             ><span id="nav-count" class="nav-count">0</span>
           </button>
-          <button class="nav-item" data-view="settings">
+          <button class="nav-item" data-view="settings" data-admin>
             <img src="/static/icons/settings-2.svg" alt="" /><span>服务设置</span>
           </button>
-          <button class="nav-item" data-view="logs">
+          <button class="nav-item" data-view="logs" data-admin>
             <img src="/static/icons/scroll-text.svg" alt="" /><span>运行日志</span>
           </button>
         </nav>
@@ -82,7 +89,7 @@
       </aside>
       <main class="main">
         <header class="topbar">
-          <span class="breadcrumb">管理面板 <span>/</span> <strong id="view-name">微信账号</strong></span>
+          <span class="breadcrumb"><span id="panel-name">管理面板</span> <span>/</span> <strong id="view-name">微信账号</strong></span>
           <div class="topbar-right">
             <span class="connection" id="backend-status"><i class="dot"></i>读取连接状态</span
             ><button class="icon-button" id="refresh-status" title="检查连接" aria-label="检查连接">
@@ -91,6 +98,7 @@
           </div>
         </header>
         <div class="page">
+          <p id="signed-in-user" class="signed-in-user" hidden></p>
           <p id="page-error" class="banner error-banner" role="alert" hidden></p>
           <section id="view-accounts" class="view">
             <div class="page-heading">
@@ -107,7 +115,7 @@
               ><span
                 ><img src="/static/icons/link-2.svg" alt="" /><strong id="bound-count">0</strong>
                 个账号已绑定</span
-              ><span id="service-indicator" class="summary-service">等待添加账号</span>
+              ><span id="service-indicator" class="summary-service" data-admin>等待添加账号</span>
             </div>
             <div class="table-heading">
               <span>微信连接 / Open WebUI 用户</span><span>会话</span><span>状态</span><span></span>
@@ -122,7 +130,7 @@
             </div>
             <div class="list-footer">
               <span id="account-total">共 0 个账号</span
-              ><button class="button secondary small" id="service-toggle">
+              ><button class="button secondary small" id="service-toggle" data-admin>
                 <img src="/static/icons/pause.svg" alt="" /><span>暂停服务</span>
               </button>
             </div>
@@ -149,6 +157,7 @@
                     placeholder="https://openwebui.example.com"
                     autocomplete="url"
                 /></label>
+                <div id="access-switches"></div>
               </section>
               <section class="settings-section">
                 <div class="section-title">

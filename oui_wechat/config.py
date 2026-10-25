@@ -67,6 +67,7 @@ class ConfigStore:
     def public(self) -> dict:
         cfg = self.cfg
         return {
+            "access": {"user_login": self.user_login},
             "owui": {"base_url": cfg.owui.base_url},
             "display": {
                 "reasoning": {
@@ -86,10 +87,20 @@ class ConfigStore:
             "reply": {"max_length": cfg.reply.max_length, "segment_interval": cfg.reply.segment_interval},
         }
 
+    @property
+    def user_login(self) -> bool:
+        raw = self.read()
+        return bool(raw.get("access", {}).get("user_login", False))
+
     def merge(self, incoming: dict) -> dict:
         raw = self.read()
         if "owui" in incoming and "base_url" in incoming["owui"]:
             raw.setdefault("owui", {})["base_url"] = validate_url(incoming["owui"]["base_url"])
+        if "user_login" in incoming.get("access", {}):
+            value = incoming["access"]["user_login"]
+            if type(value) is not bool:
+                raise ValueError("用户登录开关必须为布尔值")
+            raw.setdefault("access", {})["user_login"] = value
         for path in BOOL_PATHS:
             keys = path.split(".")
             source = incoming

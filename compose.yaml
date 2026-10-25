@@ -5,6 +5,8 @@ services:
     init: true
     restart: unless-stopped
     stop_grace_period: 30s
+    environment:
+      OUI_TRUSTED_PROXIES: "${OUI_TRUSTED_PROXIES:-}"
     ports:
       - "${OUI_BIND_ADDRESS:-0.0.0.0}:${OUI_PORT:-8787}:8787"
     volumes:
