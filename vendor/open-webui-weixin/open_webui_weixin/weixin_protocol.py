@@ -1,7 +1,7 @@
 """微信 iLink Bot API 协议层。
 
-依据: /webservices/openclaw-weixin/docs/protocol_zh_CN.md
-参考实现: /webservices/astrbot/astrbot/core/platform/sources/weixin_oc/
+协议参考: openclaw-weixin 的 docs/protocol_zh_CN.md
+参考实现: AstrBot 的 astrbot/core/platform/sources/weixin_oc/
 
 关键陷阱（协议文档未写明，来自实测）：
 `sendmessage` 缺少 ``from_user_id`` / ``client_id`` / ``message_type`` /

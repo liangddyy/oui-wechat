@@ -2,6 +2,9 @@
 
 把正在运行的 Open WebUI 后端接入个人微信的适配器。
 
+本文说明附带适配器的独立 CLI。OUI WeChat 的部署与日常管理请使用
+[根目录说明](../../README.md)中的网页流程，不要在微信中发送密码。
+
 ```
 微信客户端 ⇄ ilinkai.weixin.qq.com ⇄ 本适配器 ⇄ 127.0.0.1:8901 (Open WebUI)
                                           │
@@ -67,7 +70,7 @@
 标准 pip 应用，依赖与入口都声明在 `pyproject.toml`：
 
 ```bash
-cd /webservices/open-webui-weixin
+cd vendor/open-webui-weixin
 python3 -m venv venv
 venv/bin/pip install -e .        # 装出可执行入口 venv/bin/owux
 

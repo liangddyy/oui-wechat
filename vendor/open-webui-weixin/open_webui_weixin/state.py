@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS context_token (
 CREATE TABLE IF NOT EXISTS binding (
     wechat_user_id TEXT PRIMARY KEY,
     owui_email     TEXT NOT NULL,
-    owui_password  TEXT NOT NULL,   -- demo 阶段明文；正式版本需要加密
+    owui_password  TEXT NOT NULL,   -- 上游独立 CLI 的兼容字段；Web 绑定不保存密码
     owui_user_id   TEXT,
     owui_name      TEXT,
     jwt_token      TEXT,

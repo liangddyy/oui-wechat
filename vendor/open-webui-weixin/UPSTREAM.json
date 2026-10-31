@@ -15,6 +15,7 @@
     "Add optional image attachments and media lifecycle hooks to chat turns",
     "Preserve image content parts in temporary chat history",
     "Allow thirty-minute image generation waits and expose per-turn generation guards",
-    "Update regression fixtures and obsolete presentation assertions"
+    "Update regression fixtures and obsolete presentation assertions",
+    "Replace machine-specific documentation paths and clarify standalone CLI usage"
   ]
 }

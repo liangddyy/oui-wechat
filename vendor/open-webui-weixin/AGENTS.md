@@ -32,7 +32,7 @@
 ## 项目概述
 本项目是一个独立的 Python 服务（Connector），用于将 Open WebUI (OWUI) 接入微信（通过腾讯 iLink 协议）。
 
-- **工作目录**：`/webservices/open-webui-weixin`
+- **源码目录**：本附带目录；运行数据目录通过 `--dir` 指定。
 - **OWUI 实例**：通常运行在 `http://127.0.0.1:8901` (Host 网络)
 - **微信协议**：iLink 长连接轮询，仅支持单聊；回复必须携带该 (bot, wxid) 最近一次入站消息下发的 `context_token`（缺失时服务端返回 200 但静默丢弃）。
 - **多账号**：一个 bot = 扫码者本人的「AI 分身」，多用户 = 多 bot 账号（见核心设计原则 5）。
@@ -41,7 +41,7 @@
 
 ## 工程规范（标准 pip 应用形态）
 
-本项目对齐个人统一项目模板（参照 `/webservices/minimax-tts-openai`）：
+本适配器采用标准 Python 包与独立运行数据目录：
 
 - **命名分工**：pip 包名 `open-webui-weixin`、包目录 `open_webui_weixin/`、默认工作目录 `~/.config/open-webui-weixin/` 都用全称（在 `pip list`、`~/.config` 里一眼可辨），**命令行入口保持短名 `owux`**。
 - **包布局**：顶层即包目录 `open_webui_weixin/`（不用 `src/` 布局），`pyproject.toml` 用 setuptools 声明 `packages.find`。
@@ -250,8 +250,6 @@
 ---
 
 ## 参考文档
-- **OWUI 后端接口实测笔记**：`docs/owui-backend-api.md`（面向任意第三方客户端复用本项目对 OWUI 的调研结论，含行号引用；供 Android/iOS 等项目直接投喂）
 - **Open WebUI 官方 API 说明**：[docs.openwebui.com API 接口文档](https://docs.openwebui.com/reference/api-endpoints/)
-- **本地 Swagger 调试**：在 OWUI 容器配置中注入环境参数 `ENV=dev` 即可访问 `http://localhost:8901/docs` 访问全部 OpenAPI (Swagger UI) 格式的详尽交互细节。
-- **OWUI 源码目录**：`/webservices/open-webui/source`
+- **本地接口文档**：按所用 Open WebUI 版本的配置开启 OpenAPI 文档，在后端地址的 `/docs` 查看。
 - **iLink 协议参考**：本项目 `open_webui_weixin/weixin_protocol.py` 及 `tests/` 内的 mock。
