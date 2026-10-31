@@ -405,6 +405,7 @@ class StateStore:
         *,
         model_id: str | None = None,
         output: list | None = None,
+        files: list[dict] | None = None,
     ) -> None:
         """回合成功后追加一轮对话；assistant 为空且无结构化输出时不记，避免下一回合带出空洞。
 
@@ -413,7 +414,10 @@ class StateStore:
         正确展开成 LLM 可用的 OpenAI 消息。
         """
         history = self.temporary_history(wechat_user_id)
-        history.append({"role": "user", "content": user_text})
+        user = {"role": "user", "content": user_text}
+        if files:
+            user["files"] = files
+        history.append(user)
         assistant: dict[str, Any] = {"role": "assistant", "content": assistant_text}
         if model_id:
             assistant["model"] = model_id

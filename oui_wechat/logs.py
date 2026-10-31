@@ -12,11 +12,14 @@ def redact(value: str) -> str:
     value = re.sub(r"Bearer\s+\S+", "Bearer [redacted]", value, flags=re.I)
     value = re.sub(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b", "[JWT]", value)
     value = re.sub(
-        r'(?i)((?:password|bot_token|jwt_token|context_token|token|secret)["\']?\s*[:=]\s*)'
+        r'(?i)((?:password|bot_token|jwt_token|context_token|token|secret|aes_key|aeskey|'
+        r'encrypt_query_param|encrypted_query_param|upload_param)["\']?\s*[:=]\s*)'
         r'(?:"[^"]*"|\'[^\']*\'|[^\s,}]+)',
         r"\1[redacted]", value,
     )
     value = re.sub(r"(/login\s+)\S+\s+\S+", r"\1[redacted]", value, flags=re.I)
+    value = re.sub(r"data:image/[^;\s]+;base64,[A-Za-z0-9+/=\s]+", "[image data]", value)
+    value = re.sub(r"https?://[^\s\"']*[?][^\s\"']*", "[signed URL]", value)
     return value
 
 

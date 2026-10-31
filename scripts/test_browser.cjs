@@ -48,12 +48,22 @@ const output = path.resolve("reports/browser");
     await reasoning.waitFor();
     assert.equal(await reasoning.isChecked(), true);
     assert.equal(await page.locator('[data-path="display.reasoning.detailed"]').isChecked(), false);
+    assert.equal(await page.locator('[data-path="media.enabled"]').isChecked(), true);
+    assert.equal(await page.locator('[data-path="capabilities.image_generation"]').isChecked(), false);
+    assert.equal(await page.locator("#setting-media-ttl").inputValue(), "120");
+    assert.equal(await page.locator("#setting-media-count").inputValue(), "5");
+    assert.equal(await page.locator("#setting-media-single").inputValue(), "10");
+    assert.equal(await page.locator("#setting-media-batch").inputValue(), "25");
+    await page.locator("#setting-media-ttl").fill("180");
     await page.locator('[data-path="access.user_login"]').check();
     await reasoning.uncheck();
     await page.locator("#settings-form").getByRole("button", { name: "保存设置" }).click();
     await page.waitForFunction(() => !document.getElementById("toast").hidden);
     let response = await page.request.get(`${base}/api/settings`);
     assert.equal((await response.json()).display.reasoning.enable, false);
+    const mediaSaved = await (await page.request.get(`${base}/api/settings`)).json();
+    assert.equal(mediaSaved.media.pending_ttl_seconds, 180);
+    await page.locator("#setting-media-ttl").fill("120");
     await reasoning.check();
     await Promise.all([
       page.waitForResponse((r) => r.url().endsWith("/api/settings") && r.request().method() === "PUT"),

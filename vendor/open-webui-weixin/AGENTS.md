@@ -9,6 +9,16 @@
 - `LoginFlow.on_confirm` 可在落库前接管授权结果；Web 层用于检查归属并绑定当前用户，
   拒绝跨用户重复扫码时不会覆盖旧令牌。未传入时保持上游 CLI 落库行为。
 - Web 服务使用外层 `WebAdapter`，凭据和改绑只在网页处理；独立上游 CLI 保持兼容。
+- `ChatRunner.run_turn` 可带 `files`，写入同一条 `user_message.files`；
+  临时历史序列化和 `StateStore.temporary_append` 同步保留图片内容。
+- `ChatRunner` 新增默认空的 `before_submit`、`on_accepted`、`observe_event`、
+  `check_attachments`、`after_stream` 扩展点；Web 层实现提交标记、提交模型校验、
+  回图和清理，独立 CLI 保持文字行为。
+- 外层媒体功能采用先图后文，纯文字不增加合并定时器；媒体网络操作不持有全局账号锁。
+- 媒体回归位于外层 `tests/test_media.py`，密码、JWT、AES 密钥、签名 CDN URL 和图片内容不得记入日志。
+- 生图能力启用的回合使用独立 1800 秒总等待及空闲窗口；普通文字维持 600/180 秒。
+  `ChatRunner.generation_state` 同步通知 Web 层保护该用户：生图期间拒收新消息及命令，
+  仅允许 `/stop`，保护覆盖预检至图片回传；显式图片工具事件也会启用保护。
 - `OwuiSocket.sid` 使用 `AsyncClient.get_sid()` 的 Socket.IO 命名空间 ID；
   断开时清空，不能传 Engine.IO 的 `sio.sid`。
 - 持久会话每轮在提交前重新读取 `get_chat`，根据服务端当前分支选父节点。

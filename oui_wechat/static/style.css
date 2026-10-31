@@ -598,6 +598,9 @@ h3 {
   grid-template-columns: 220px 220px;
   gap: 24px;
 }
+.media-fields {
+  margin-top: 16px;
+}
 .input-unit {
   position: relative;
 }

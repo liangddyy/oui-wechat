@@ -26,3 +26,42 @@ OUI WeChat 的新增管理代码，不替代第三方原有授权声明。
 - 原始许可证：`oui_wechat/static/icons/LICENSE`
 
 只附带界面实际使用的 SVG 图标，不依赖第三方 CDN。
+
+## Tencent openclaw-weixin
+
+- 作者：Tencent
+- 协议参考包：`@tencent-weixin/openclaw-weixin`，固定版本 `2.4.10`
+- 来源：https://registry.npmjs.org/@tencent-weixin/openclaw-weixin/-/openclaw-weixin-2.4.10.tgz
+- 授权：MIT；媒体协议字段、AES 编码、上传及图片消息流程参照其源码。
+- 本项目的 Python 媒体实现位于 `oui_wechat/`，不附带该包的其他功能。
+
+保留参考包 LICENSE 的版权及许可声明：
+
+```text
+Tencent is pleased to support the open source community by making openclaw-weixin available.
+
+Copyright (C) 2026 Tencent. All rights reserved.
+
+openclaw-weixin is licensed under the MIT.
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+媒体依赖 `cryptography`、Pillow 与 markdown-it-py 通过锁文件安装，许可证随各自发行包保留。

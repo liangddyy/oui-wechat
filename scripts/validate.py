@@ -35,8 +35,15 @@ def main() -> int:
         "web": [
             sys.executable, "-B", str(ROOT / "tests" / "test_web.py")
         ],
+        "media": [
+            sys.executable, "-B", str(ROOT / "tests" / "test_media.py")
+        ],
         "lint": [
             sys.executable, "-m", "ruff", "check", "--no-cache", "."
+        ],
+        "app_lint": [
+            sys.executable, "-m", "ruff", "check", "--no-cache",
+            *[str(ROOT / name) for name in ("oui_wechat", "tests", "scripts", "validation")],
         ],
     }
     results = {}

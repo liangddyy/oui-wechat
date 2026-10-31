@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -20,7 +21,37 @@ BOOL_PATHS = (
     "capabilities.tools",
     "capabilities.web_search",
     "capabilities.allow_terminal",
+    "capabilities.image_generation",
+    "media.enabled",
 )
+
+
+@dataclass(frozen=True)
+class MediaConfig:
+    enabled: bool = True
+    pending_ttl_seconds: int = 120
+    max_images_per_turn: int = 5
+    max_image_bytes: int = 10 * 1024 * 1024
+    max_batch_bytes: int = 25 * 1024 * 1024
+
+    @classmethod
+    def load(cls, raw: dict) -> MediaConfig:
+        values = {**asdict(cls()), **raw}
+        if type(values["enabled"]) is not bool:
+            raise ValueError("图片收发开关必须为布尔值")
+        limits = {
+            "pending_ttl_seconds": (30, 600),
+            "max_images_per_turn": (1, 10),
+            "max_image_bytes": (1024 * 1024, 20 * 1024 * 1024),
+            "max_batch_bytes": (1024 * 1024, 50 * 1024 * 1024),
+        }
+        for key, (minimum, maximum) in limits.items():
+            value = values[key]
+            if type(value) is not int or not minimum <= value <= maximum:
+                raise ValueError(f"图片设置 {key} 需为 {minimum}–{maximum} 之间的整数")
+        if values["max_batch_bytes"] < values["max_image_bytes"]:
+            raise ValueError("每批图片大小上限不能小于单张图片上限")
+        return cls(**{key: values[key] for key in asdict(cls())})
 
 
 def validate_url(value: str) -> str:
@@ -68,6 +99,7 @@ class ConfigStore:
         cfg = self.cfg
         return {
             "access": {"user_login": self.user_login},
+            "media": asdict(self.media),
             "owui": {"base_url": cfg.owui.base_url},
             "display": {
                 "reasoning": {
@@ -82,7 +114,7 @@ class ConfigStore:
             },
             "capabilities": {
                 key: getattr(cfg.capabilities, key)
-                for key in ("memory", "tools", "web_search", "allow_terminal")
+                for key in ("memory", "tools", "web_search", "allow_terminal", "image_generation")
             },
             "reply": {"max_length": cfg.reply.max_length, "segment_interval": cfg.reply.segment_interval},
         }
@@ -91,6 +123,10 @@ class ConfigStore:
     def user_login(self) -> bool:
         raw = self.read()
         return bool(raw.get("access", {}).get("user_login", False))
+
+    @property
+    def media(self) -> MediaConfig:
+        return MediaConfig.load(self.read().get("media", {}))
 
     def merge(self, incoming: dict) -> dict:
         raw = self.read()
@@ -118,6 +154,10 @@ class ConfigStore:
                 target = target[key]
             target[keys[-1]] = value
         reply = incoming.get("reply", {})
+        if "media" in incoming:
+            raw["media"] = asdict(MediaConfig.load({
+                **raw.get("media", {}), **incoming["media"],
+            }))
         if "max_length" in reply:
             value = reply["max_length"]
             if type(value) is not int or not 128 <= value <= 8192:

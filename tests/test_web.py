@@ -209,6 +209,52 @@ class WebTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(settings["display"]["reasoning"], {"enable": True, "detailed": False})
         self.assertFalse(settings["capabilities"]["allow_terminal"])
 
+    async def test_media_settings_defaults_and_validated_persistence(self):
+        await self.setup_admin()
+        settings = await (await self.client.get("/api/settings")).json()
+        self.assertEqual(settings["media"], {
+            "enabled": True, "pending_ttl_seconds": 120, "max_images_per_turn": 5,
+            "max_image_bytes": 10 * 1024 * 1024, "max_batch_bytes": 25 * 1024 * 1024,
+        })
+        self.assertFalse(settings["capabilities"]["image_generation"])
+        response = await self.client.put(
+            "/api/settings", headers=self.headers,
+            json={"media": {"pending_ttl_seconds": 180, "max_images_per_turn": 3},
+                  "capabilities": {"image_generation": True}},
+        )
+        self.assertEqual(response.status, 200, await response.text())
+        self.assertEqual(self.manager.config.media.pending_ttl_seconds, 180)
+        self.assertEqual(self.manager.config.media.max_images_per_turn, 3)
+        self.assertTrue(self.manager.config.cfg.capabilities.image_generation)
+        before = self.manager.config.path.read_bytes()
+        for media in (
+            {"enabled": "true"}, {"pending_ttl_seconds": 0}, {"max_images_per_turn": True},
+            {"max_image_bytes": 100 * 1024 * 1024}, {"max_batch_bytes": 1024},
+        ):
+            response = await self.client.put(
+                "/api/settings", headers=self.headers, json={"media": media},
+            )
+            self.assertEqual(response.status, 400)
+            self.assertEqual(before, self.manager.config.path.read_bytes())
+
+    async def test_new_chat_unbind_and_disabling_media_clear_waiting_images(self):
+        await self.setup_admin()
+        await self.bind("alice")
+        store = self.manager.media.store
+        for action in ("new-chat", "unbind"):
+            store.add("wx-alice", "fixture-scope", [{}])
+            response = await self.client.post(
+                f"/api/accounts/bot-alice/{action}", headers=self.headers, json={},
+            )
+            self.assertEqual(response.status, 200)
+            self.assertEqual(store.db.execute("SELECT count(*) FROM batches").fetchone()[0], 0)
+        store.add("wx-alice", "fixture-scope", [{}])
+        response = await self.client.put(
+            "/api/settings", headers=self.headers, json={"media": {"enabled": False}},
+        )
+        self.assertEqual(response.status, 200)
+        self.assertEqual(store.db.execute("SELECT count(*) FROM batches").fetchone()[0], 0)
+
     async def test_display_settings_persist_without_replacing_other_configuration(self):
         await self.setup_admin()
         original_weixin = self.manager.config.read()["weixin"]

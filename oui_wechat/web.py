@@ -235,7 +235,7 @@ async def settings_get(request):
 async def settings_save(request):
     data = await payload(request)
     if any(not isinstance(data.get(section, {}), dict)
-           for section in ("owui", "display", "capabilities", "reply", "access")):
+           for section in ("owui", "display", "capabilities", "reply", "access", "media")):
         raise ValueError("设置分组格式无效")
     manager = request.app[MANAGER]
     async with manager.access_lock:

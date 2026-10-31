@@ -302,6 +302,7 @@ const capabilitySettings = [
   ["capabilities.tools", "模型默认工具"],
   ["capabilities.web_search", "联网搜索"],
   ["capabilities.allow_terminal", "允许模型使用终端"],
+  ["capabilities.image_generation", "允许 Open WebUI 图像生成"],
 ];
 
 function renderSwitches(container, options, data) {
@@ -326,9 +327,14 @@ async function loadSettings() {
   $("setting-url").value = data.owui.base_url;
   $("setting-length").value = data.reply.max_length;
   $("setting-interval").value = data.reply.segment_interval;
+  $("setting-media-ttl").value = data.media.pending_ttl_seconds;
+  $("setting-media-count").value = data.media.max_images_per_turn;
+  $("setting-media-single").value = data.media.max_image_bytes / (1024 * 1024);
+  $("setting-media-batch").value = data.media.max_batch_bytes / (1024 * 1024);
   renderSwitches("display-switches", displaySettings, data);
   renderSwitches("capability-switches", capabilitySettings, data);
   renderSwitches("access-switches", [["access.user_login", "允许 Open WebUI 账号登录"]], data);
+  renderSwitches("media-switches", [["media.enabled", "微信图片收发"]], data);
 }
 
 $("settings-form").addEventListener("submit", (event) => {
@@ -341,6 +347,12 @@ $("settings-form").addEventListener("submit", (event) => {
         reply: {
           max_length: Number($("setting-length").value),
           segment_interval: Number($("setting-interval").value),
+        },
+        media: {
+          pending_ttl_seconds: Number($("setting-media-ttl").value),
+          max_images_per_turn: Number($("setting-media-count").value),
+          max_image_bytes: Number($("setting-media-single").value) * 1024 * 1024,
+          max_batch_bytes: Number($("setting-media-batch").value) * 1024 * 1024,
         },
       };
       for (const input of document.querySelectorAll("[data-path]")) {

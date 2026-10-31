@@ -175,6 +175,31 @@
               </section>
               <section class="settings-section">
                 <div class="section-title">
+                  <img src="/static/icons/messages-square.svg" alt="" />
+                  <h2>图片收发</h2>
+                </div>
+                <div id="media-switches" class="switch-grid"></div>
+                <div class="form-grid media-fields">
+                  <label class="field">等待问题时间<span class="input-unit">
+                    <input id="setting-media-ttl" type="number" min="30" max="600" step="1" required />
+                    <span>秒</span>
+                  </span></label>
+                  <label class="field">每批图片数量<span class="input-unit">
+                    <input id="setting-media-count" type="number" min="1" max="10" step="1" required />
+                    <span>张</span>
+                  </span></label>
+                  <label class="field">单张大小上限<span class="input-unit">
+                    <input id="setting-media-single" type="number" min="1" max="20" step="1" required />
+                    <span>MiB</span>
+                  </span></label>
+                  <label class="field">整批大小上限<span class="input-unit">
+                    <input id="setting-media-batch" type="number" min="1" max="50" step="1" required />
+                    <span>MiB</span>
+                  </span></label>
+                </div>
+              </section>
+              <section class="settings-section">
+                <div class="section-title">
                   <img src="/static/icons/ellipsis.svg" alt="" />
                   <h2>消息分片</h2>
                 </div>

@@ -18,8 +18,12 @@ certifi==2026.10.23
     # via
     #   httpcore
     #   httpx
+cffi==2.1.1 ; platform_python_implementation != 'PyPy'
+    # via cryptography
 colorama==0.4.6 ; sys_platform == 'win32'
     # via qrcode
+cryptography==50.0.2
+    # via oui-wechat
 frozenlist==1.8.0
     # via
     #   aiohttp
@@ -37,14 +41,22 @@ idna==3.20
     #   anyio
     #   httpx
     #   yarl
+markdown-it-py==4.2.0
+    # via oui-wechat
+mdurl==0.1.2
+    # via markdown-it-py
 multidict==7.2.1
     # via
     #   aiohttp
     #   yarl
+pillow==13.0.0
+    # via oui-wechat
 propcache==0.5.4
     # via
     #   aiohttp
     #   yarl
+pycparser==3.12 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
+    # via cffi
 python-engineio==4.14.0
     # via python-socketio
 python-socketio==5.17.0

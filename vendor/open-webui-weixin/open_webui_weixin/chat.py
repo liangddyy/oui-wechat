@@ -22,6 +22,8 @@ log = logging.getLogger(__name__)
 TURN_TIMEOUT = 600.0
 # 两次事件之间的最长空白；超时视为流已断
 IDLE_TIMEOUT = 180.0
+# 生图工具可能数分钟不发送任何进度事件，使用独立的有界等待窗口。
+IMAGE_GENERATION_TIMEOUT = 1800.0
 
 
 def _current_parent(detail: dict[str, Any]) -> str | None:
@@ -52,7 +54,17 @@ def _current_parent(detail: dict[str, Any]) -> str | None:
     raise OwuiError("会话当前分支不完整")
 
 
-def _serialize_temporary_history(history: list[dict[str, Any]], user_text: str) -> list[dict[str, Any]]:
+def _image_content(text: str, files: list[dict] | None = None) -> str | list[dict]:
+    if not files:
+        return text
+    return [{"type": "text", "text": text}] + [
+        {"type": "image_url", "image_url": {"url": file["url"]}} for file in files
+    ]
+
+
+def _serialize_temporary_history(
+    history: list[dict[str, Any]], user_text: str, files: list[dict] | None = None,
+) -> list[dict[str, Any]]:
     """复刻 Chat.svelte:3496-3542 临时聊天的 messages 映射。
 
     - assistant 条目带 ``output``：发 ``{role, model, output}``，让后端按
@@ -75,8 +87,11 @@ def _serialize_temporary_history(history: list[dict[str, Any]], user_text: str) 
             content = str(item.get("content") or "")
             if role == "assistant" and not content.strip():
                 continue
-            messages.append({"role": role, "content": content})
-    messages.append({"role": "user", "content": user_text})
+            messages.append({
+                "role": role,
+                "content": _image_content(content, item.get("files")) if role == "user" else content,
+            })
+    messages.append({"role": "user", "content": _image_content(user_text, files)})
     return messages
 
 
@@ -88,6 +103,8 @@ class TurnResult:
         self.chat_id: str | None = None
         self.sent_segments = 0
         self.note_lines: list[str] = []  # 侧栏说明（思考提示/工具调用/检索状态）
+        self.accepted = False
+        self.assistant_message_id: str | None = None
 
 
 class ChatRunner:
@@ -105,6 +122,8 @@ class ChatRunner:
         owui: OwuiClient,
         socket: OwuiSocket,
         send_text: Any,
+        *,
+        generation_state: Any = None,
     ) -> None:
         self.cfg = cfg
         self.state = state
@@ -112,8 +131,12 @@ class ChatRunner:
         self.socket = socket
         # async def (wechat_user_id, text) -> None
         self._send_text = send_text
+        self.image_generation = False
+        self._generation_state = generation_state
 
-    async def run_turn(self, wechat_user_id: str, jwt_token: str, user_text: str) -> TurnResult:
+    async def run_turn(
+        self, wechat_user_id: str, jwt_token: str, user_text: str, *, files: list[dict] | None = None,
+    ) -> TurnResult:
         result = TurnResult()
         focus = self.state.get_focus(wechat_user_id)
         temporary = bool(focus["temporary"]) if focus else False
@@ -146,8 +169,15 @@ class ChatRunner:
             await self._send_text(wechat_user_id, result.notice)
             log.info("自动选用模型 %s -> %s", model_id, wechat_user_id[:12])
 
+        if files:
+            error = await self.check_attachments(jwt_token, model_id, files)
+            if error:
+                result.error = error
+                return result
+
         user_msg_id = str(uuid.uuid4())
         assistant_msg_id = str(uuid.uuid4())
+        result.assistant_message_id = assistant_msg_id
         renderer = TurnRenderer(
             max_length=self.cfg.reply.max_length,
             show_reasoning=self.cfg.display.reasoning.enable,
@@ -164,6 +194,8 @@ class ChatRunner:
             log.warning("能力探测失败，未发起生成: %s", exc)
             result.error = "读不到模型的能力设置，已停止发送，请稍后重试"
             return result
+
+        self.set_image_generation(bool(caps.features.get("image_generation")))
 
         if chat_id and not temporary:
             try:
@@ -210,6 +242,8 @@ class ChatRunner:
                 }
             ),
         }
+        if files:
+            body["user_message"]["files"] = files
         # 注意：绝不能在 body 里放 `tools` 键——那会让服务端跳过全部服务端工具解析
         # （terminal 工具 / builtin / skills 全都没了，middleware.py:2957-2960）
         if temporary:
@@ -218,7 +252,7 @@ class ChatRunner:
             # 已保存会话的历史由服务端从 DB 加载（middleware.py:2450 起按 is_saved_chat_id
             # 门控），临时会话没有这条通路，历史必须全量放进请求体。
             body["messages"] = _serialize_temporary_history(
-                self.state.temporary_history(wechat_user_id), user_text
+                self.state.temporary_history(wechat_user_id), user_text, files
             )
         elif chat_id:
             body["chat_id"] = chat_id
@@ -236,6 +270,7 @@ class ChatRunner:
         queue = self.socket.subscribe(None, assistant_msg_id)
         try:
             try:
+                self.before_submit()
                 resp = await self.owui.start_chat_completion(jwt_token, body)
             except OwuiError as exc:
                 result.error = f"请求被拒绝：{exc}"
@@ -245,6 +280,8 @@ class ChatRunner:
                 result.error = f"OWUI 未接受生成任务：{resp}"
                 return result
 
+            result.accepted = True
+            self.on_accepted()
             chat_id = resp.get("chat_id") or chat_id
             result.chat_id = chat_id
             returned = resp.get("chat_id")
@@ -264,6 +301,7 @@ class ChatRunner:
             )
             await self._stream_to_weixin(wechat_user_id, renderer, queue, result, assistant_msg_id)
             result.ok = result.error is None
+            await self.after_stream(wechat_user_id, jwt_token, renderer, result)
         finally:
             self.socket.unsubscribe(None, assistant_msg_id)
 
@@ -273,7 +311,8 @@ class ChatRunner:
                 # 临时聊天：历史追加进本地表，持久焦点断点（chat/leaf）原样保留，
                 # 退出临时模式后还能无缝续聊
                 self.state.temporary_append(
-                    wechat_user_id, user_text, renderer.full_text, model_id=model_id, output=renderer.output
+                    wechat_user_id, user_text, renderer.full_text, model_id=model_id, output=renderer.output,
+                    files=files,
                 )
             else:
                 self.state.set_focus(
@@ -293,22 +332,31 @@ class ChatRunner:
         assistant_msg_id: str,
     ) -> None:
         loop = asyncio.get_running_loop()
-        deadline = loop.time() + TURN_TIMEOUT
+        started = loop.time()
         done = False
 
         while not done:
-            remaining = min(deadline - loop.time(), IDLE_TIMEOUT)
+            total = IMAGE_GENERATION_TIMEOUT if self.image_generation else TURN_TIMEOUT
+            idle = IMAGE_GENERATION_TIMEOUT if self.image_generation else IDLE_TIMEOUT
+            remaining = min(started + total - loop.time(), idle)
             if remaining <= 0:
-                result.error = result.error or "生成超时，未收到结束信号"
+                result.error = result.error or (
+                    "图片生成等待超时（30 分钟），后台任务可能仍在继续，请到 OpenWebUI 网页查看。"
+                    if self.image_generation else "生成超时，未收到结束信号"
+                )
                 break
             try:
                 payload = await asyncio.wait_for(queue.get(), timeout=remaining)
             except TimeoutError:
                 if renderer.buffer:
                     await self._emit(wechat_user_id, renderer.pump(final=True), result)
-                result.error = result.error or "生成中断（长时间无响应）"
+                result.error = result.error or (
+                    "图片生成等待超时（30 分钟），后台任务可能仍在继续，请到 OpenWebUI 网页查看。"
+                    if self.image_generation else "生成中断（长时间无响应）"
+                )
                 break
 
+            self.observe_event(payload)
             evt = renderer.handle(payload)
             if payload.get("chat_id") and not result.chat_id:
                 result.chat_id = str(payload["chat_id"])
@@ -334,6 +382,41 @@ class ChatRunner:
         tail = renderer.citation_tail()
         if tail and result.error is None:
             await self._emit(wechat_user_id, [tail], result)
+
+    def observe_event(self, payload: dict) -> None:
+        """Also detect image tools exposed without the built-in feature flag."""
+        outer = payload.get("data") or {}
+        data = outer.get("data")
+        if not isinstance(data, dict):
+            return
+        item = data.get("item") or {}
+        if not isinstance(item, dict):
+            item = {}
+        if (
+            data.get("action") in {"image_generation", "image_edit", "image_editing"}
+            or str(data.get("type", "")).startswith("response.image_generation_call.")
+            or item.get("type") == "image_generation_call"
+            or item.get("name") in {"generate_image", "generate_images", "edit_image", "edit_images"}
+        ):
+            self.set_image_generation(True)
+
+    def set_image_generation(self, enabled: bool) -> None:
+        self.image_generation = enabled
+        if self._generation_state:
+            self._generation_state(enabled)
+
+    def before_submit(self) -> None:
+        """Optional persistent marker before a possibly ambiguous network submission."""
+
+    async def check_attachments(self, jwt_token: str, model_id: str, files: list[dict]) -> str | None:
+        """Optional validation against the exact model selected for this request."""
+        return None
+
+    def on_accepted(self) -> None:
+        """Optional cleanup once the backend has accepted this turn."""
+
+    async def after_stream(self, wechat_user_id, jwt_token, renderer, result) -> None:
+        """Optional delivery of completed media after the streamed text."""
 
     async def _emit(self, wechat_user_id: str, chunks: list[str], result: TurnResult) -> None:
         for chunk in chunks:

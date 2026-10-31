@@ -20,6 +20,7 @@ from open_webui_weixin.state import StateStore
 from .adapter import WebAdapter
 from .auth import Principal
 from .config import ConfigStore
+from .image_inbox import ImageInbox
 from .media import qr_png
 
 log = logging.getLogger(__name__)
@@ -51,6 +52,7 @@ class ServiceManager:
         self.config = config
         self.state = StateStore(config.cfg.state_path)
         self.owui = OwuiClient(config.cfg.owui.base_url)
+        self.media = ImageInbox(config.directory / "media", config.media)
         self.adapter: Adapter | None = None
         self.task: asyncio.Task | None = None
         self.login_client = None
@@ -79,7 +81,8 @@ class ServiceManager:
         self.last_error = None
         self.login_client = build_client(self.config.cfg)
         self.adapter = WebAdapter(
-            self.config.cfg, self.state, self.login_client, self.owui, access_lock=self.access_lock
+            self.config.cfg, self.state, self.login_client, self.owui, access_lock=self.access_lock,
+            media=self.media,
         )
         self.task = asyncio.create_task(self.adapter.run())
         self.task.add_done_callback(self._finished)
@@ -111,6 +114,7 @@ class ServiceManager:
         self.task = None
         self.adapter = None
         self.login_client = None
+        await self.media.detach()
 
     async def stop(self) -> None:
         async with self.lock:
@@ -118,6 +122,7 @@ class ServiceManager:
             await self._stop()
 
     async def reconcile(self) -> None:
+        self.media.start_cleanup()
         async with self.lock:
             if not self.state.load_accounts():
                 await self._stop()
@@ -133,6 +138,12 @@ class ServiceManager:
         async with self.lock:
             await self._stop()
             self.config.write(raw)
+            self.media.settings = self.config.media
+            self.media.store.settings = self.config.media
+            self.media.weixin.settings = self.config.media
+            if not self.config.media.enabled:
+                for row in self.media.store.db.execute("SELECT DISTINCT uid FROM batches").fetchall():
+                    self.media.clear(row["uid"])
             await self.owui.close()
             self.owui = OwuiClient(self.config.cfg.owui.base_url)
             self.health_cache = (0, {})
@@ -211,6 +222,9 @@ class ServiceManager:
         return value
 
     async def _drop_runtime(self, uid: str) -> None:
+        self.media.clear(uid)
+        epoch = int(self.state.get_meta(f"media_epoch:{uid}", "0")) + 1
+        self.state.set_meta(f"media_epoch:{uid}", str(epoch))
         if self.adapter:
             await self.adapter.stop_current(uid)
             await self.adapter.runtimes.drop_socket(uid)
@@ -462,4 +476,5 @@ class ServiceManager:
         async with self.lock:
             await self._stop()
         await self.owui.close()
+        await self.media.close()
         self.state.close()

@@ -11,6 +11,10 @@
     "Reject follow-ups while the current reply is incomplete",
     "Default reasoning notices on, reasoning content off",
     "Add asynchronous browser pairing callbacks",
+    "Allow pairing ownership validation before persisting authorization",
+    "Add optional image attachments and media lifecycle hooks to chat turns",
+    "Preserve image content parts in temporary chat history",
+    "Allow thirty-minute image generation waits and expose per-turn generation guards",
     "Update regression fixtures and obsolete presentation assertions"
   ]
 }
